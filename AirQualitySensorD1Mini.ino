@@ -32,7 +32,11 @@
 #include <Adafruit_GFX.h>             // For OLED
 #include <Adafruit_SSD1306.h>         // For OLED
 #include <ESP8266WiFi.h>              // ESP8266 WiFi driver
+
+#if ENABLE_MQTT == true
 #include <PubSubClient.h>             // Required for MQTT
+#endif
+
 #include "PMS.h"                      // Particulate Matter Sensor driver (embedded)
 
 /*--------------------------- Global Variables ---------------------------*/
@@ -90,7 +94,7 @@ uint8_t g_display_state = DISPLAY_STATE_GRAMS;  // Display values in micrograms/
 uint8_t  g_current_mode_button_state  =  1;  // Pin is pulled high by default
 uint8_t  g_previous_mode_button_state =  1;
 uint32_t g_last_debounce_time         =  0;
-uint32_t g_debounce_delay             = 100;
+uint32_t g_debounce_delay             = 250;
 
 // Wifi
 #define WIFI_CONNECT_INTERVAL           500  // Wait 500ms intervals for wifi connection
@@ -121,7 +125,9 @@ Adafruit_SSD1306 OLED(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
 // MQTT
 WiFiClient esp_client;
+#if ENABLE_MQTT == true
 PubSubClient client(esp_client);
+#endif
 
 /*--------------------------- Program ------------------------------------*/
 /**
@@ -159,6 +165,7 @@ void setup()
   OLED.println(g_device_id, HEX);
   OLED.display();
 
+#if ENABLE_MQTT == true
   // Set up the topics for publishing sensor readings. By inserting the unique ID,
   // the result is of the form: "tele/d9616f/AE1P0" etc
   sprintf(g_command_topic,         "cmnd/%x/COMMAND",   ESP.getChipId());  // For receiving commands
@@ -176,6 +183,7 @@ void setup()
 #if REPORT_MQTT_JSON
   sprintf(g_mqtt_json_topic,       "tele/%x/SENSOR",    ESP.getChipId());  // Data from PMS
 #endif
+#endif /* ENABLE_MQTT == true */
 
   // Report the MQTT topics to the serial console
   Serial.println(g_command_topic);          // For receiving messages
@@ -210,10 +218,12 @@ void setup()
 
   pinMode(MODE_BUTTON_PIN, INPUT_PULLUP); // Pin for screen mode button
 
+#if ENABLE_MQTT == true
   /* Set up the MQTT client */
   client.setServer(mqtt_broker, 1883);
   client.setCallback(mqttCallback);
   client.setBufferSize(255);
+#endif /* ENABLE_MQTT == true */
 }
 
 /**
@@ -221,6 +231,7 @@ void setup()
 */
 void loop()
 {
+#if ENABLE_MQTT == true
   if (WiFi.status() == WL_CONNECTED)
   {
     if (!client.connected())
@@ -229,6 +240,7 @@ void loop()
     }
   }
   client.loop();  // Process any outstanding MQTT messages
+#endif /* ENABLE_MQTT == true */
 
   checkModeButton();
   updatePmsReadings();
@@ -281,7 +293,7 @@ void updatePmsReadings()
         >= ((g_pms_report_period * 1000) - (g_pms_warmup_period * 1000)))
     {
       // It's time to wake up the sensor
-      //Serial.println("Waking up sensor");
+      Serial.println("Waking up sensor");
       pms.wakeUp();
       g_pms_state_start = time_now;
       g_pms_state = PMS_STATE_WAKING_UP;
@@ -332,9 +344,12 @@ void updatePmsReadings()
         g_pms_ppd_readings_taken = true;
       }
       pms.sleep();
+      Serial.println("PMS sleeping");
 
       // Report the new values
+#if ENABLE_MQTT == true
       reportToMqtt();
+#endif /* ENABLE_MQTT == true */
       reportToSerial();
 
       g_pms_state_start = time_now;
@@ -441,6 +456,92 @@ void renderScreen()
 }
 
 /**
+  Report the latest values to the serial console
+*/
+void reportToSerial()
+{
+  if (true == g_pms_ppd_readings_taken)
+  {
+    /* Report PM1.0 AE value */
+    Serial.print("PM1:");
+    Serial.println(String(g_pm1p0_ae_value));
+
+    /* Report PM2.5 AE value */
+    Serial.print("PM2.5:");
+    Serial.println(String(g_pm2p5_ae_value));
+
+    /* Report PM10.0 AE value */
+    Serial.print("PM10:");
+    Serial.println(String(g_pm10p0_ae_value));
+  }
+
+  if (true == g_pms_ppd_readings_taken)
+  {
+    /* Report PM0.3 PPD value */
+    Serial.print("PB0.3:");
+    Serial.println(String(g_pm0p3_ppd_value));
+
+    /* Report PM0.5 PPD value */
+    Serial.print("PB0.5:");
+    Serial.println(String(g_pm0p5_ppd_value));
+
+    /* Report PM1.0 PPD value */
+    Serial.print("PB1:");
+    Serial.println(String(g_pm1p0_ppd_value));
+
+    /* Report PM2.5 PPD value */
+    Serial.print("PB2.5:");
+    Serial.println(String(g_pm2p5_ppd_value));
+
+    /* Report PM5.0 PPD value */
+    Serial.print("PB5:");
+    Serial.println(String(g_pm5p0_ppd_value));
+
+    /* Report PM10.0 PPD value */
+    Serial.print("PB10:");
+    Serial.println(String(g_pm10p0_ppd_value));
+  }
+}
+
+/**
+  Connect to Wifi. Returns false if it can't connect.
+*/
+bool initWifi()
+{
+  // Clean up any old auto-connections
+  if (WiFi.status() == WL_CONNECTED)
+  {
+    WiFi.disconnect();
+  }
+  WiFi.setAutoConnect(false);
+
+  // RETURN: No SSID, so no wifi!
+  if (sizeof(ssid) == 1)
+  {
+    return false;
+  }
+
+  // Connect to wifi
+  WiFi.begin(ssid, password);
+
+  // Wait for connection set amount of intervals
+  int num_attempts = 0;
+  while (WiFi.status() != WL_CONNECTED && num_attempts <= WIFI_CONNECT_MAX_ATTEMPTS)
+  {
+    delay(WIFI_CONNECT_INTERVAL);
+    num_attempts++;
+  }
+
+  if (WiFi.status() != WL_CONNECTED)
+  {
+    return false;
+  } else {
+    return true;
+  }
+}
+
+#if ENABLE_MQTT == true
+/**
   Report the latest values to MQTT
 */
 void reportToMqtt()
@@ -533,91 +634,6 @@ void reportToMqtt()
 }
 
 /**
-  Report the latest values to the serial console
-*/
-void reportToSerial()
-{
-  if (true == g_pms_ppd_readings_taken)
-  {
-    /* Report PM1.0 AE value */
-    Serial.print("PM1:");
-    Serial.println(String(g_pm1p0_ae_value));
-
-    /* Report PM2.5 AE value */
-    Serial.print("PM2.5:");
-    Serial.println(String(g_pm2p5_ae_value));
-
-    /* Report PM10.0 AE value */
-    Serial.print("PM10:");
-    Serial.println(String(g_pm10p0_ae_value));
-  }
-
-  if (true == g_pms_ppd_readings_taken)
-  {
-    /* Report PM0.3 PPD value */
-    Serial.print("PB0.3:");
-    Serial.println(String(g_pm0p3_ppd_value));
-
-    /* Report PM0.5 PPD value */
-    Serial.print("PB0.5:");
-    Serial.println(String(g_pm0p5_ppd_value));
-
-    /* Report PM1.0 PPD value */
-    Serial.print("PB1:");
-    Serial.println(String(g_pm1p0_ppd_value));
-
-    /* Report PM2.5 PPD value */
-    Serial.print("PB2.5:");
-    Serial.println(String(g_pm2p5_ppd_value));
-
-    /* Report PM5.0 PPD value */
-    Serial.print("PB5:");
-    Serial.println(String(g_pm5p0_ppd_value));
-
-    /* Report PM10.0 PPD value */
-    Serial.print("PB10:");
-    Serial.println(String(g_pm10p0_ppd_value));
-  }
-}
-
-/**
-  Connect to Wifi. Returns false if it can't connect.
-*/
-bool initWifi()
-{
-  // Clean up any old auto-connections
-  if (WiFi.status() == WL_CONNECTED)
-  {
-    WiFi.disconnect();
-  }
-  WiFi.setAutoConnect(false);
-
-  // RETURN: No SSID, so no wifi!
-  if (sizeof(ssid) == 1)
-  {
-    return false;
-  }
-
-  // Connect to wifi
-  WiFi.begin(ssid, password);
-
-  // Wait for connection set amount of intervals
-  int num_attempts = 0;
-  while (WiFi.status() != WL_CONNECTED && num_attempts <= WIFI_CONNECT_MAX_ATTEMPTS)
-  {
-    delay(WIFI_CONNECT_INTERVAL);
-    num_attempts++;
-  }
-
-  if (WiFi.status() != WL_CONNECTED)
-  {
-    return false;
-  } else {
-    return true;
-  }
-}
-
-/**
   Reconnect to MQTT broker, and publish a notification to the status topic
 */
 void reconnectMqtt() {
@@ -664,3 +680,4 @@ void mqttCallback(char* topic, byte* payload, uint8_t length)
     Serial.println();
   */
 }
+#endif /* ENABLE_MQTT == true */

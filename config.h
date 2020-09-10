@@ -4,6 +4,7 @@ const char* ssid                  = "YOUR SSID";     // Your WiFi SSID
 const char* password              = "YOUR PASS";     // Your WiFi password
 
 /* MQTT */
+#define     ENABLE_MQTT           false
 const char* mqtt_broker           = "192.168.1.111"; // IP address of your MQTT broker
 const char* mqtt_username         = "";              // Your MQTT username
 const char* mqtt_password         = "";              // Your MQTT password
@@ -22,7 +23,7 @@ uint32_t    g_pms_report_period   = 120;             // Seconds between reports
 #define     MODE_BUTTON_PIN         D3               // GPIO0 Pushbutton to GND
 #define     ESP_WAKEUP_PIN          D0               // To reset ESP8266 after deep sleep
 #define     PMS_RX_PIN              D4               // Rx from PMS (== PMS Tx)
-#define     PMS_TX_PIN              D8               // Tx to PMS (== PMS Rx)
+#define     PMS_TX_PIN              D6               // Tx to PMS (== PMS Rx)
 #define     PMS_BAUD_RATE         9600               // PMS5003 uses 9600bps
 
 #define     SCREEN_WIDTH           128               // OLED display width (pixels)
