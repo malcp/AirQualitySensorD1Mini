@@ -643,20 +643,20 @@ void reconnectMqtt() {
   // Loop until we're reconnected
   while (!client.connected())
   {
-    //Serial.print("Attempting MQTT connection...");
+    Serial.print("Attempting MQTT connection...");
     // Attempt to connect
     if (client.connect(mqtt_client_id, mqtt_username, mqtt_password))
     {
-      //Serial.println("connected");
+      Serial.println("connected");
       // Once connected, publish an announcement
       sprintf(g_mqtt_message_buffer, "Device %s starting up", mqtt_client_id);
       client.publish(status_topic, g_mqtt_message_buffer);
       // Resubscribe
       //client.subscribe(g_command_topic);
     } else {
-      //Serial.print("failed, rc=");
-      //Serial.print(client.state());
-      //Serial.println(" try again in 5 seconds");
+      Serial.print("failed, rc=");
+      Serial.print(client.state());
+      Serial.println(" try again in 5 seconds");
       // Wait 5 seconds before retrying
       delay(5000);
     }
